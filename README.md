@@ -12,53 +12,35 @@ QS1-XSMR is a production-grade quantitative research and execution framework ind
 
 The platform is organized around three independent engines with explicit contracts:
 
+```text
 ┌─────────────────────────────────────────────────────┐
-
 │         SIGNAL RESEARCH LAYER                       │
-
-│  Cross-Sectional Mean Reversion (238 equities)     │
-
-│  Status: Invalidated post-costing (published       │
-
-│          as methodology reference)                  │
-
-└────────────────────┬────────────────────────────────┘
-
-│
-
-▼
-
-┌─────────────────────────────────────────────────────┐
-
-│    EXECUTION & ORCHESTRATION LAYER                  │
-
-│  Live Deterministic Order Routing                  │
-
 │                                                     │
-
-│  • Single-writer execution control                 │
-
-│  • Automated broker state reconciliation (PM-015)  │
-
-│  • Prometheus/Grafana monitoring                   │
-
-│  • Circuit breaker & exposure controls             │
-
+│  Cross-Sectional Mean Reversion (238 equities)      │
+│  Status: Invalidated post-costing (published        │
+│          as methodology reference)                  │
 └────────────────────┬────────────────────────────────┘
-
-       │
-
-▼
-
+                     │
+                     ▼
 ┌─────────────────────────────────────────────────────┐
-
+│    EXECUTION & ORCHESTRATION LAYER                  │
+│                                                     │
+│  Live Deterministic Order Routing                   │
+│                                                     │
+│  • Single-writer execution control                  │
+│  • Automated broker state reconciliation (PM-015)   │
+│  • Prometheus/Grafana monitoring                    │
+│  • Circuit breaker & exposure controls              │
+└────────────────────┬────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────┐
 │      RISK OVERLAY & MACRO PROTECTION                │
-
-│  Autonomous Strategy & Constraint Enforcement      │
-
-│  [Proprietary - Available under NDA]               │
-
+│                                                     │
+│  Autonomous Strategy & Constraint Enforcement       │
+│  [Proprietary - Available under NDA]                │
 └─────────────────────────────────────────────────────┘
+```
 
 ---
 
