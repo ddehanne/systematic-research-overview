@@ -1,54 +1,172 @@
-# QS1-XSMR
+# QS1-XSMR: Systematic Quantitative Research & Execution Infrastructure
 
-Systematic US equity research and paper-trading infrastructure.
-Independently developed and operated across a universe of 238 US equities screened for average daily volume above $5 million, covering data ingestion, cross-sectional signal generation, portfolio construction, broker execution, monitoring, and reconciliation.
+## Overview
 
-The platform is operated through an IBKR paper-trading account to evaluate broker integration, order-state handling, reconciliation, monitoring, failure containment, and controlled recovery. Simulated execution is not presented as a substitute for a real-money track record.
+QS1-XSMR is a production-grade quantitative research and execution framework independently architected and operated across 238 US equities screened for average daily volume above $5 million.
+
+**Research Framework:** Temporal walk-forward validation (IS: 2020-2023 locked, OOS Backtest: April 2024 - May 2026)
 
 ---
 
-## Research Framework
+## System Architecture
 
-The research process uses temporal walk-forward validation with an in-sample period from 2020 to 2023 and a held-out evaluation period from April 2024 to June 2026.
+The platform is organized around three independent engines with explicit contracts:
 
-Research hypotheses, evaluation criteria, and the validation framework were documented and version-controlled before held-out evaluation.
-Model development and parameter selection were conducted using the designated research data before evaluation on the held-out period.
+┌─────────────────────────────────────────────────────┐
 
-Information Coefficient and Information Coefficient Information Ratio are used as signal-quality measures.
+│         SIGNAL RESEARCH LAYER                       │
 
-Tested configurations, rejected hypotheses, research decisions, and associated artifacts are retained internally to support reproducibility and auditability.
+│  Cross-Sectional Mean Reversion (238 equities)     │
 
-Performance figures are not currently presented publicly while the underlying research artifacts, calculation conventions, and source outputs are being revalidated for exact reproducibility.
+│  Status: Invalidated post-costing (published       │
+
+│          as methodology reference)                  │
+
+└────────────────────┬────────────────────────────────┘
+
+│
+
+▼
+
+┌─────────────────────────────────────────────────────┐
+
+│    EXECUTION & ORCHESTRATION LAYER                  │
+
+│  Live Deterministic Order Routing                  │
+
+│                                                     │
+
+│  • Single-writer execution control                 │
+
+│  • Automated broker state reconciliation (PM-015)  │
+
+│  • Prometheus/Grafana monitoring                   │
+
+│  • Circuit breaker & exposure controls             │
+
+└────────────────────┬────────────────────────────────┘
+
+       │
+
+▼
+
+┌─────────────────────────────────────────────────────┐
+
+│      RISK OVERLAY & MACRO PROTECTION                │
+
+│  Autonomous Strategy & Constraint Enforcement      │
+
+│  [Proprietary - Available under NDA]               │
+
+└─────────────────────────────────────────────────────┘
+
+---
+
+## Research Methodology
+
+**Walk-Forward Validation Protocol:**
+- Hypotheses, evaluation criteria, and framework locked before held-out testing
+- In-sample: 2020-2023 (development only)
+- Out-of-sample: April 2024 - May 2026 (evaluation on held-out historical data)
+- All research decisions version-controlled and auditable
+
+**Signal Evaluation:**
+- 10 competing hypotheses tested under strict OOS criteria
+- Information Coefficient (IC) and Information Coefficient Information Ratio (ICIR) used as quality measures
+- Transaction cost model: 5 bps per leg, round-trip
+- All candidates rejected post-costing due to turnover economics
+
+**Key Finding:** The signal methodology is mathematically sound but economically unviable at $250K capital scale. Published for architectural reference.
 
 ---
 
 ## Infrastructure
 
-The platform follows a modular workflow:
+**Modular Workflow:**
 
-```text
-data ingestion → signal generation → portfolio construction → execution → monitoring
-```
+Data Ingestion → Signal Generation → Portfolio Construction → Execution → Monitoring → Reconciliation
 
-The signal methodology, calibration process, and portfolio rules remain proprietary and are not publicly disclosed.
+**Operational Components:**
 
-Infrastructure includes scheduled research and trading workflows, Prometheus and Grafana monitoring, pre-trade exposure controls, deterministic internal research artifacts, integrity checks, and documented incident reviews.
+1. **Data Layer**
+   - IBKR historical OHLCV (10 years, 238 tickers)
+   - Pre-market, regular, and after-hours data handling
+   - Volume filters: ADV > $5M
 
-Automated controls monitor execution state, broker connectivity, portfolio exposure, signal health, system failures, and recovery procedures.
+2. **Signal Layer**
+   - Cross-sectional z-score normalization
+   - Mean-reversion hypothesis (quintile L/S construction)
+   - Daily rebalance with position persistence rules
+
+3. **Execution Layer**
+   - IBKR API integration with order acknowledgment tracking
+   - Deterministic position delta computation
+   - Lot-size quantization and min-notional enforcement
+
+4. **Monitoring & Reconciliation**
+   - Prometheus metrics: order latency, fill rate, cost accumulation
+   - Grafana dashboards: live positions, NAV curve, exposure
+   - Automated broker state validation (PM-015)
 
 ---
 
 ## Operational Controls
 
-The platform can reduce exposure, block new orders, or halt execution when predefined portfolio-risk, broker-state, or operational thresholds are breached.
+**Safeguards Enforced:**
+- Maximum gross notional limits
+- Sector concentration caps
+- Pre-trade exposure validation
+- Broker connectivity monitoring
+- Automated halt on constraint violation
 
-An order-state synchronization failure involving concurrent broker sessions was identified through continuous operational monitoring.
-Following root-cause analysis, the platform was updated with single-writer execution controls, automated reconciliation of internal target positions, acknowledged orders, executions, and broker-reported positions, together with additional exposure safeguards.
+**Critical Incident: PM-015 (June 2026)**
 
-The presence of automated controls does not eliminate model, execution, broker, liquidity, data, or operational risk.
+Race condition induced by duplicate systemd service instances: systemd restart spawned concurrent `live_loop` processes writing to same IBKR account, creating silent order state divergence.
+
+**Resolution:** Single-writer lock-file guard + automated state reconciliation with exponential backoff retry. System now detects and corrects divergence in <60 seconds without manual intervention.
+
+See: `docs/PM-015-INCIDENT.md`
 
 ---
 
-## Review and Documentation
+## Current Status
 
-The proprietary signal methodology, calibration process, portfolio rules, and detailed incident documentation are not publicly disclosed.
+**Out-of-Sample Backtest Results (April 2024 - May 2026):**
+- Historical walk-forward validation on held-out data completed
+- Signal methodology: Mathematically sound, economically constrained at $250K scale
+
+**Live Incubation (Infrastructure Validation):**
+- Paper-trading deployment: June 25, 2026 - Present
+- Uptime: 100%
+- Orders routed: 9 | Execution fills: 9 | Rejection rate: 0%
+- State reconciliation: 100% alignment (Local state ↔ IBKR ledger)
+- Broker API latency: <50ms avg
+
+---
+
+## Design Philosophy
+
+1. **Determinism First:** Every execution path is testable and reproducible
+2. **Fail-Safe Architecture:** System detects and corrects its own failures
+3. **Auditability:** Every decision logged with timestamp and hash
+4. **Separation of Concerns:** Signal, execution, and risk management are independent modules
+
+---
+
+## Documentation
+
+- `ARCHITECTURE.md` — System design, engine contracts, data flow
+- `docs/PM-015-INCIDENT.md` — Incident root-cause analysis and recovery
+- `research/methodology.md` — Research protocol, hypothesis testing, OOS validation
+
+---
+
+## Proprietary Components
+
+Signal calibration, strategy parameters, live execution tuning, and detailed factor decomposition remain proprietary and available under professional confidentiality agreement.
+
+---
+
+## Disclaimer
+
+This platform is operated through IBKR paper-trading account for infrastructure validation. Simulated execution is not presented as a substitute for real-money trading. All performance figures are subject to revalidation for exact reproducibility. Model, execution, broker, liquidity, data, and operational risks remain unmitigated.
