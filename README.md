@@ -2,7 +2,7 @@
 
 ## Overview
 
-QS1-XSMR is a production-grade quantitative research and execution framework independently architected and operated across 238 US equities screened for average daily volume above $5 million.
+QS1-XSMR is a modular quantitative research and IBKR paper-trading infrastructure independently architected and operated across 238 US equities screened for average daily volume above $5 million.
 
 **Research Framework:** Temporal walk-forward validation (IS: 2020-2023 locked, OOS Backtest: April 2024 - May 2026)
 
@@ -25,7 +25,7 @@ The platform is organized around three independent engines with explicit contrac
 ┌─────────────────────────────────────────────────────┐
 │    EXECUTION & ORCHESTRATION LAYER                  │
 │                                                     │
-│  Live Deterministic Order Routing                   │
+│  Scheduled Deterministic Order Routing                   │
 │                                                     │
 │  • Single-writer execution control                  │
 │  • Automated broker state reconciliation (PM-015)   │
@@ -37,7 +37,7 @@ The platform is organized around three independent engines with explicit contrac
 ┌─────────────────────────────────────────────────────┐
 │      RISK OVERLAY & MACRO PROTECTION                │
 │                                                     │
-│  Autonomous Strategy & Constraint Enforcement       │
+│  Rule-Based Strategy & Constraint Enforcement       │
 │  [Proprietary - Available under NDA]                │
 └─────────────────────────────────────────────────────┘
 ```
@@ -55,10 +55,10 @@ The platform is organized around three independent engines with explicit contrac
 **Signal Evaluation:**
 - 10 competing hypotheses tested under strict OOS criteria
 - Information Coefficient (IC) and Information Coefficient Information Ratio (ICIR) used as quality measures
-- Transaction cost model: 5 bps per leg, round-trip
+- Transaction cost assumption: 5 bps per traded leg, equivalent to 10 bps round-trip
 - All candidates rejected post-costing due to turnover economics
 
-**Key Finding:** The signal methodology is mathematically sound but economically unviable at $250K capital scale. Published for architectural reference.
+**Key Finding:** The evaluated signal candidates did not meet predefined expected net-performance criteria after the modeled transaction costs. The methodology is retained as a documented research and architectural reference. Published for architectural reference.
 
 ---
 
@@ -86,7 +86,7 @@ Data Ingestion → Signal Generation → Portfolio Construction → Execution �
    - Lot-size quantization and min-notional enforcement
 
 4. **Monitoring & Reconciliation**
-   - Prometheus metrics: order latency, fill rate, cost accumulation
+   - Prometheus metrics for portfolio state, execution activity, broker connectivity, and operational controls
    - Grafana dashboards: live positions, NAV curve, exposure
    - Automated broker state validation (PM-015)
 
@@ -101,13 +101,13 @@ Data Ingestion → Signal Generation → Portfolio Construction → Execution �
 - Broker connectivity monitoring
 - Automated halt on constraint violation
 
-**Critical Incident: PM-015 (June 2026)**
+**Incident: PM-015 (June 2026)**
 
-Race condition induced by duplicate systemd service instances: systemd restart spawned concurrent `live_loop` processes writing to same IBKR account, creating silent order state divergence.
+Duplicate execution-process instances created concurrent access to the same IBKR paper-trading account, resulting in order-state divergence.
 
-**Resolution:** Single-writer lock-file guard + automated state reconciliation with exponential backoff retry. System now detects and corrects divergence in <60 seconds without manual intervention.
+Resolution: Implemented a single-writer lock-file guard, broker-state reconciliation, append-only event logging, and additional exposure safeguards.
 
-See: `docs/PM-015-INCIDENT.md`
+See: docs/PM-015-INCIDENT.md
 
 ---
 
@@ -117,19 +117,20 @@ See: `docs/PM-015-INCIDENT.md`
 - Historical walk-forward validation on held-out data completed
 - Signal methodology: Mathematically sound, economically constrained at $250K scale
 
-**Live Incubation (Infrastructure Validation):**
+**Live Deployment (Infrastructure Validation Phase):**
 - Paper-trading deployment: June 25, 2026 - Present
 - Uptime: 100%
-- Orders routed: 9 | Execution fills: 9 | Rejection rate: 0%
-- State reconciliation: 100% alignment (Local state ↔ IBKR ledger)
-- Broker API latency: <50ms avg
+- Orders submitted: 9 | Fills executed: 9
+- Broker-state reconciliation: 100% alignment (ledger ↔ IBKR)
+- API latency: <50ms average
+- Monitoring: Prometheus metrics and Grafana dashboards operational
 
 ---
 
 ## Design Philosophy
 
 1. **Determinism First:** Every execution path is testable and reproducible
-2. **Fail-Safe Architecture:** System detects and corrects its own failures
+2. **Failure Containment: Operational controls are designed to detect, isolate, and reconcile known failure modes.
 3. **Auditability:** Every decision logged with timestamp and hash
 4. **Separation of Concerns:** Signal, execution, and risk management are independent modules
 
@@ -151,4 +152,4 @@ Signal calibration, strategy parameters, live execution tuning, and detailed fac
 
 ## Disclaimer
 
-This platform is operated through IBKR paper-trading account for infrastructure validation. Simulated execution is not presented as a substitute for real-money trading. All performance figures are subject to revalidation for exact reproducibility. Model, execution, broker, liquidity, data, and operational risks remain unmitigated.
+This platform is operated through an IBKR paper-trading account for infrastructure validation. Simulated execution is not presented as a substitute for real-money trading. All performance figures and operational metrics remain subject to reproducible verification. Model, execution, broker, liquidity, data, and operational risks remain material.
