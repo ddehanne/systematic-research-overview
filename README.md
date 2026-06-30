@@ -11,6 +11,17 @@ held-out evaluation (April 2024–May 2026)
 
 ---
 
+## What This Project Demonstrates
+
+- End-to-end ownership of a quantitative research and paper-execution workflow
+- Integration of research, portfolio construction, broker connectivity,
+  operational controls, monitoring, and incident analysis
+- Independent development across Python and Rust
+- Reproducible research outputs and explicit documentation of failed hypotheses
+- Operational hardening based on observed system behavior
+
+---
+
 ## System Architecture
 
 The platform is organized into two primary logical layers with explicit module boundaries:
