@@ -546,23 +546,23 @@ Metric types and labels are defined by the active exporter implementation.
 │  │  Prometheus + Grafana                  │  │
 │  │                                        │  │
 │  │  • Metrics collection                  │  │
-│  │  • Operational monitoring             │  │
+│  │  • Operational monitoring              │  │
 │  │  • Dashboarding and alerting           │  │
 │  └────────────────────────────────────────┘  │
 │                                              │
 │  ┌────────────────────────────────────────┐  │
-│  │  Persistent State                     │  │
+│  │  Persistent State                      │  │
 │  │                                        │  │
-│  │  • ledger.jsonl                       │  │
-│  │  • lock files                         │  │
-│  │  • Prometheus data directory          │  │
+│  │  • ledger.jsonl                        │  │
+│  │  • lock files                          │  │
+│  │  • Prometheus data directory           │  │
 │  └────────────────────────────────────────┘  │
 └──────────────────────────┬───────────────────┘
                            │
                            ▼
               ┌────────────────────────────┐
-              │  Interactive Brokers      │
-              │  Paper-Trading Account    │
+              │  Interactive Brokers       │
+              │  Paper-Trading Account     │
               │                            │
               │  • Order submission        │
               │  • Position reporting      │
