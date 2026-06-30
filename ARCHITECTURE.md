@@ -18,92 +18,92 @@ This design prioritizes operational resilience and separation of responsibilitie
 ┌─────────────────────────────────────────────────────────────┐
 │                    EXTERNAL DATA SOURCES                    │
 │                                                             │
-│  IBKR Historical Data (10y) | Market Data Feed | Risk Data │
+│  IBKR Historical Data (10y) | Market Data Feed | Risk Data  │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              DATA INGESTION & TRANSFORMATION                │
 │                                                             │
-│  • IBKR OHLCV fetch (pre-market, regular, AH)              │
-│  • Volume filtering (ADV > $5M)                            │
-│  • Feature computation (ret1, ret5, ret20, vwap)           │
+│  • IBKR OHLCV fetch (pre-market, regular, AH)               │
+│  • Volume filtering (ADV > $5M)                             │
+│  • Feature computation (ret1, ret5, ret20, vwap)            │
 │                                                             │
-│  → Output: Daily feature matrix {date, ticker, features}   │
+│  → Output: Daily feature matrix {date, ticker, features}    │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │         ENGINE 1: SIGNAL RESEARCH LAYER                     │
 │                                                             │
-│  Input: Feature matrix                                     │
-│  Process: Cross-sectional z-score, mean-reversion logic    │
-│  Output: Daily signal {ticker, weight} ∈ [-1, 1]           │
+│  Input: Feature matrix                                      │
+│  Process: Cross-sectional z-score, mean-reversion logic     │
+│  Output: Daily signal {ticker, weight} ∈ [-1, 1]            │
 │                                                             │
-│  • Weights normalized to unit gross exposure               │
-│  • Quintile construction (L/S)                             │
-│  • Status: Frozen (methodology reference only)             │
+│  • Weights normalized to unit gross exposure                │
+│  • Quintile construction (L/S)                              │
+│  • Status: Frozen (methodology reference only)              │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
-│    ENGINE 2: EXECUTION & ORCHESTRATION LAYER (Rust Core)   │
+│    ENGINE 2: EXECUTION & ORCHESTRATION LAYER (Rust Core)    │
 │                                                             │
-│  Input: Daily signal {ticker, weight}                      │
+│  Input: Daily signal {ticker, weight}                       │
 │                                                             │
 │  ┌───────────────────────────────────────────────────────┐  │
-│  │  POSITION COMPUTATION (Deterministic)                │  │
-│  │  • target_position = weight × nav / price            │  │
-│  │  • delta = target_position - current_position        │  │
+│  │  POSITION COMPUTATION (Deterministic)                 │  │
+│  │  • target_position = weight × nav / price             │  │
+│  │  • delta = target_position - current_position         │  │
 │  │                                                       │  │
-│  │  → ORDER CONSTRUCTION                                │  │
-│  │  • qty = floor_to_lot(delta, lot_size)              │  │
-│  │  • Check: qty × price >= min_notional               │  │
+│  │  → ORDER CONSTRUCTION                                 │  │
+│  │  • qty = floor_to_lot(delta, lot_size)                │  │
+│  │  • Check: qty × price >= min_notional                 │  │
 │  │                                                       │  │
-│  │  → ORDER ROUTING                                    │  │
-│  │  • Single-writer lock enforcement                   │  │
-│  │  • Asynchronous order queue                         │  │
+│  │  → ORDER ROUTING                                      │  │
+│  │  • Single-writer lock enforcement                     │  │
+│  │  • Asynchronous order queue                           │  │
 │  │                                                       │  │
-│  │  → FILL TRACKING                                    │  │
-│  │  • Wait for broker acknowledgment                   │  │
-│  │  • Persist event to ledger.jsonl                    │  │
+│  │  → FILL TRACKING                                      │  │
+│  │  • Wait for broker acknowledgment                     │  │
+│  │  • Persist event to ledger.jsonl                      │  │
 │  └───────────────────────────────────────────────────────┘  │
 │                                                             │
-│  Output: Orders routed, fills tracked, ledger updated      │
+│  Output: Orders routed, fills tracked, ledger updated       │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
-│    ENGINE 3: RISK OVERLAY & MACRO PROTECTION               │
+│    ENGINE 3: RISK OVERLAY & MACRO PROTECTION                │
 │                                                             │
-│  Input: Current portfolio state + fills                    │
+│  Input: Current portfolio state + fills                     │
 │                                                             │
 │  ┌───────────────────────────────────────────────────────┐  │
-│  │  CONSTRAINT EVALUATION                              │  │
-│  │  • Gross notional <= $250K                         │  │
-│  │  • Sector concentration <= cap                     │  │
-│  │  • Currency exposure within limits                 │  │
+│  │  CONSTRAINT EVALUATION                                │  │
+│  │  • Gross notional <= $250K                            │  │
+│  │  • Sector concentration <= cap                        │  │
+│  │  • Currency exposure within limits                    │  │
 │  │                                                       │  │
-│  │  → DECISION: ALLOW / REDUCE / HALT                 │  │
+│  │  → DECISION: ALLOW / REDUCE / HALT                    │  │
 │  │                                                       │  │
-│  │  REGIME DETECTION (Macro FX Guard)                 │  │
-│  │  • Market-volatility regime                        │  │
-│  │  • Correlation structure                           │  │
+│  │  REGIME DETECTION (Macro FX Guard)                    │  │
+│  │  • Market-volatility regime                           │  │
+│  │  • Correlation structure                              │  │
 │  │                                                       │  │
-│  │  → Adaptive position sizing                        │  │
+│  │  → Adaptive position sizing                           │  │
 │  └───────────────────────────────────────────────────────┘  │
 │                                                             │
-│  Output: Risk decision and exposure adjustment             │
+│  Output: Risk decision and exposure adjustment              │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
-│      MONITORING & RECONCILIATION (PM-015, Python)          │
+│      MONITORING & RECONCILIATION (PM-015, Python)           │
 │                                                             │
-│  • Scheduled ledger-vs-broker state validation            │
-│  • Prometheus operational metrics                         │
-│  • Grafana dashboards for NAV and exposure                │
-│  • Reconciliation and controlled recovery procedures      │
+│  • Scheduled ledger-vs-broker state validation              │
+│  • Prometheus operational metrics                           │
+│  • Grafana dashboards for NAV and exposure                  │
+│  • Reconciliation and controlled recovery procedures        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
