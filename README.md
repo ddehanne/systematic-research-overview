@@ -72,7 +72,7 @@ Data Ingestion → Signal Generation → Portfolio Construction → Execution �
 
 1. **Data Layer**
    - IBKR historical OHLCV (10 years, 238 tickers)
-   - Pre-market, regular, and after-hours data handling
+   - Daily OHLCV data using close-to-close observations
    - Volume filters: ADV > $5M
 
 2. **Signal Layer**
@@ -88,7 +88,7 @@ Data Ingestion → Signal Generation → Portfolio Construction → Execution �
 4. **Monitoring & Reconciliation**
    - Prometheus metrics for portfolio state, execution activity, broker connectivity, and operational controls
    - Grafana dashboards: paper positions, NAV, exposure, and reconciliation status
-   - Automated broker state validation (PM-015)
+   - Continuous broker-state verification (PM-015)
 
 ---
 
