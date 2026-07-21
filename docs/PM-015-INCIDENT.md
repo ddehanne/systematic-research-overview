@@ -1,9 +1,14 @@
 # PM-015 Post-Mortem: Concurrent Broker Session Desynchronization
 
+> ⚠ **Remediation doctrine superseded (2026-07).** The "zero manual
+> intervention" approach below was subsequently falsified in
+> production — see the addendum at the end of this document and
+> PM-018 for the current fail-closed doctrine.
+
 **Date Reported:** June 16, 2026  
 **Root Cause Identified:** June 17, 2026  
 **Resolution Implemented:** June 24, 2026  
-**Status:** RESOLVED ✓
+**Status:** RESOLVED ✓ (remediation doctrine later superseded — see addendum)
 
 ---
 
@@ -43,31 +48,31 @@ On June 15, 2026 at 15:44 UTC, a systemd service restart spawned duplicate insta
 ### Primary Failure Mode
 
 **Race condition induced by duplicate systemd service instances.**
-Process Lifecycle (Before Fix):Time T0:   live_loop starts
 
-├─ Opens IBKR session (socket)
+```text
+Process Lifecycle (Before Fix):
 
-├─ Initializes ledger.jsonl
+Time T0:   live_loop starts
+           ├─ Opens IBKR session (socket)
+           ├─ Initializes ledger.jsonl
+           └─ No lock file created
 
-└─ No lock file createdTime T0+2: Systemd restart signal (SIGKILL, not SIGTERM)
+Time T0+2: Systemd restart signal (SIGKILL, not SIGTERM)
+           ├─ Process killed abruptly
+           ├─ IBKR socket remains open (zombie connection)
+           └─ No cleanup handler executed
 
-├─ Process killed abruptly
+Time T0+3: Systemd auto-restart spawns new instance
+           ├─ New process unaware of old connection
+           ├─ Opens SECOND IBKR session
+           └─ Both sessions active simultaneously
 
-├─ IBKR socket remains open (zombie connection)
+Result:    Both processes submit orders to same account
+           IBKR processes orders from both
+           Ledger only records one stream (whichever persists)
+           → DIVERGENCE
+```
 
-    └─ No cleanup handler executedTime T0+3: Systemd auto-restart spawns new instance
-
-├─ New process unaware of old connection
-
-├─ Opens SECOND IBKR session
-
-└─ Both sessions active simultaneouslyResult:    Both processes submit orders to same account
-
-IBKR processes orders from both
-
-Ledger only records one stream (whichever persists)
-
-→ DIVERGENCE
 ### Why Detection Failed
 
 1. **No startup lock enforcement:** Process did not check for existing instance
@@ -106,17 +111,17 @@ If divergence had persisted through market open on June 16 with real capital:
 ## Root Cause: Technical Deep Dive
 
 ### The Systemd Restart Behavior
-/etc/systemd/system/live_loop.service (Before Fix)[Service]
 
+```ini
+# /etc/systemd/system/live_loop.service (Before Fix)
+[Service]
 Type=simple
-
 ExecStart=/usr/bin/python3 /opt/trading/live_loop.py
-
 Restart=always
-
 RestartSec=5
-
 KillMode=process  ← PROBLEM: Sends SIGKILL, not SIGTERM
+```
+
 When systemd restarts:
 1. Sends SIGKILL to process (no graceful shutdown)
 2. Process dies immediately
@@ -132,79 +137,22 @@ IBKR broker API allows multiple concurrent connections from same account (for hi
 
 ## Resolution: Lock-File Guard
 
-### Design
+### Design (June 2026 implementation — later superseded)
 
-```rust
-// SYSTEM_RUNNER startup (Rust Core via RAII / Drop trait)
+Initial remediation: a **Python lock-file guard** at startup — write
+the current PID to a lockfile, check liveness of any PID found in an
+existing lockfile, refuse to start if that process is alive, remove
+the lockfile on clean exit.
 
-use std::fs::{File, OpenOptions};
-use std::path::Path;
-use std::io::Write;
-use std::process;
-
-struct LockGuard {
-    lock_path: String,
-}
-
-impl LockGuard {
-    fn acquire(lock_path: &str) -> Result<Self, String> {
-        let path = Path::new(lock_path);
-        
-        // Check if lock file exists and process still alive
-        if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(path) {
-                if let Ok(pid) = content.trim().parse::<u32>() {
-                    // Check if process with that PID is still running
-                    if process_alive(pid) {
-                        return Err(format!(
-                            "Another live_loop instance running (PID {})", pid
-                        ));
-                    }
-                }
-            }
-            // Stale lock, remove it
-            let _ = std::fs::remove_file(path);
-        }
-        
-        // Create new lock file with current PID
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(path)
-            .map_err(|e| format!("Failed to create lock: {}", e))?;
-        
-        writeln!(file, "{}", process::id())
-            .map_err(|e| format!("Failed to write PID: {}", e))?;
-        
-        log::info!("Acquired exclusive lock (PID {})", process::id());
-        
-        Ok(LockGuard {
-            lock_path: lock_path.to_string(),
-        })
-    }
-}
-
-// RAII: Lock automatically released when guard is dropped
-impl Drop for LockGuard {
-    fn drop(&mut self) {
-        if let Err(e) = std::fs::remove_file(&self.lock_path) {
-            log::warn!("Failed to remove lock file: {}", e);
-        }
-    }
-}
-
-// On startup
-fn main() {
-    let _lock = LockGuard::acquire("/tmp/live_loop.lock")
-        .expect("Failed to acquire lock");
-    
-    // Lock held for entire process lifetime
-    // Automatically released on panic, exit, or drop
-    run_trading_loop();
-}
-```
-
-**Key Difference from Python:** Lock is **guaranteed** to be released on any exit path (panic, exception, normal exit) via Rust's Drop trait (RAII). No atexit hooks needed. No way to forget cleanup.
+**Known limitation (identified at the time, confirmed later):** a
+PID-file check is advisory and race-prone — stale files after
+SIGKILL, PID reuse, and check-then-create races between two starting
+instances. This approach was subsequently replaced by a
+**kernel-level `flock` held on the ledger resource itself**
+(INFRA-002): the lock is owned by the kernel for the lifetime of the
+process, cannot go stale, is released automatically on any exit path
+including SIGKILL, and is enforced at the resource rather than by
+convention. See PM-018 for the incident that forced the upgrade.
 
 ### Systemd Service Fix
 
@@ -218,7 +166,12 @@ KillMode=mixed  ← Changed: Sends SIGTERM first, then SIGKILL
 TimeoutStopSec=10
 ```
 
-Now systemd sends SIGTERM → application runs cleanup via Drop → lock file removed → new instance can start.
+Now systemd sends SIGTERM → application runs cleanup → lock file removed → new instance can start.
+
+> Note: `KillMode=mixed` was itself later found insufficient —
+> detached child processes survive the main-process SIGTERM and keep
+> broker sessions alive. It was replaced by `KillMode=control-group`.
+> See PM-016.
 
 ---
 
@@ -452,7 +405,7 @@ def test_broker_api_500_recovery():
 
 | Lesson | Implementation | Priority |
 |--------|----------------|----------|
-| **No concurrent writers** | Lock-file guard (RAII/Drop in Rust) | CRITICAL |
+| **No concurrent writers** | Lock-file guard (PID-file; later kernel flock — INFRA-002) | CRITICAL |
 | **Detect divergence automatically** | Hourly ledger vs broker validation | CRITICAL |
 | **Correct deterministically** | Idempotent state reconciliation | CRITICAL |
 | **Don't trust broker API** | Always reconcile, never assume | HIGH |
@@ -463,7 +416,7 @@ def test_broker_api_500_recovery():
 
 ## Production Checklist
 
-- [x] Lock-file guard implemented (RAII/Drop trait in Rust core)
+- [x] Lock-file guard implemented (PID-file; later upgraded to kernel flock — INFRA-002)
 - [x] Auto-reconcile logic written & tested
 - [x] Idempotence tests passing
 - [x] Lock contention tests passing
@@ -471,7 +424,7 @@ def test_broker_api_500_recovery():
 - [x] Failure injection tests passing
 - [x] Monitoring alerts configured
 - [x] Manual reconciliation disabled (auto-only)
-- [x] Systemd service updated (KillMode=mixed)
+- [x] Systemd service updated (KillMode=mixed; later control-group — PM-016)
 - [x] Post-market schedule verified (16:05 ET / America/New_York dynamic schedule)
 
 ---
@@ -519,3 +472,36 @@ The remediation introduced four production-relevant controls:
 The incident reinforces a core infrastructure requirement: systematic execution systems must not only generate orders, but also detect, bound, reconcile, and document operational failures when state assumptions break.
 
 The objective of the remediation was operational integrity: no concurrent writers, no silent state divergence, no historical ledger mutation, and reproducible recovery evidence.
+
+---
+
+## 2026-07 Addendum — Doctrine superseded
+
+The remediation direction above ("detect divergence automatically,
+correct deterministically, require zero manual intervention") was
+subsequently **falsified in production**.
+
+The investigation documented in PM-018 identified eight distinct
+autonomous restart/correction mechanisms — cron watchdogs, systemd
+restart policies, supervisor units, a control API, bot commands, an
+alerter auto-restart, and a scheduled daily restart. Far from
+preventing failures, these mechanisms *were* the failure class:
+uncoordinated automatic actions repeatedly resurrected processes the
+operator had deliberately stopped, and one auto-restart killed the
+pipeline precisely because the market was closed (a stale-cycle alert
+misread as a fault — PM-019).
+
+**Current doctrine — fail-closed, human-in-the-loop:**
+
+- The system detects inconsistency and **refuses to act** (boot gate
+  exits non-zero; no orders on divergent state).
+- Recovery is a **deliberate operator action** through a locked boot
+  chain: kernel single-writer lock → broker reconciliation gate →
+  trading loop.
+- Alerting components alert; **they never start or restart anything.**
+- All eight autonomous mechanisms were deliberately removed and the
+  full process tree audited for start paths.
+
+This addendum is retained alongside the original text rather than
+rewriting it: the evolution from "self-healing" to "fail-closed" —
+driven by the system's own observed behavior — is itself the finding.
