@@ -2,43 +2,37 @@
 
 ## Overview
 
-QS1-XSMR is a production-grade quantitative research and execution framework independently architected and operated across 238 US equities screened for average daily volume above $5 million.
+QS1-XSMR is a quantitative research and paper-execution framework independently architected and operated over a **point-in-time U.S. equity universe** (dated holdings; universe membership is a function of time, not a fixed list).
 
-**Research Framework:** Temporal walk-forward validation (IS: 2020-2023 locked, OOS Backtest: April 2024 - May 2026)
+**Research discipline:** pre-registered hypotheses, held-out evaluation, and a self-initiated data audit that invalidated part of my own backtest — documented below.
 
 ---
 
 ## System Architecture
 
-The platform is organized around three independent engines with explicit contracts:
+Three layers with explicit contracts:
 
 ```text
 ┌─────────────────────────────────────────────────────┐
 │         SIGNAL RESEARCH LAYER                       │
-│                                                     │
-│  Cross-Sectional Mean Reversion (238 equities)      │
-│  Status: Invalidated post-costing (published        │
-│          as methodology reference)                  │
+│  Cross-sectional mean reversion,                    │
+│  point-in-time universe construction                │
+│  Status: reclassified regime-conditional            │
+│          after data audit (see below)               │
 └────────────────────┬────────────────────────────────┘
-                     │
                      ▼
 ┌─────────────────────────────────────────────────────┐
 │    EXECUTION & ORCHESTRATION LAYER                  │
-│                                                     │
-│  Live Deterministic Order Routing                   │
-│                                                     │
-│  • Single-writer execution control                  │
-│  • Automated broker state reconciliation (PM-015)   │
+│  Deterministic order routing (paper, IBKR)          │
+│  • Kernel-level single-writer lock (flock)          │
+│  • Broker reconciliation gate at boot (fail-closed) │
+│  • Append-only fill ledger                          │
 │  • Prometheus/Grafana monitoring                    │
-│  • Circuit breaker & exposure controls              │
 └────────────────────┬────────────────────────────────┘
-                     │
                      ▼
 ┌─────────────────────────────────────────────────────┐
-│      RISK OVERLAY & MACRO PROTECTION                │
-│                                                     │
-│  Autonomous Strategy & Constraint Enforcement       │
-│  [Proprietary - Available under NDA]                │
+│      RISK OVERLAY & CONSTRAINT ENFORCEMENT          │
+│  [Proprietary — available under NDA]                │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -46,109 +40,114 @@ The platform is organized around three independent engines with explicit contrac
 
 ## Research Methodology
 
-**Walk-Forward Validation Protocol:**
-- Hypotheses, evaluation criteria, and framework locked before held-out testing
-- In-sample: 2020-2023 (development only)
-- Out-of-sample: April 2024 - May 2026 (evaluation on held-out historical data)
+**Evaluation protocol:**
+- Hypotheses and evaluation criteria locked before held-out testing
+- 10 competing cross-sectional mean-reversion candidates evaluated
+  (IC / ICIR, turnover constraints, transaction-cost model)
+- Candidates failing predefined robustness or net-performance
+  criteria were rejected
 - All research decisions version-controlled and auditable
 
-**Signal Evaluation:**
-- 10 competing hypotheses tested under strict OOS criteria
-- Information Coefficient (IC) and Information Coefficient Information Ratio (ICIR) used as quality measures
-- Transaction cost model: 5 bps per leg, round-trip
-- All candidates rejected post-costing due to turnover economics
+**Data audit (self-initiated):**
+The point-in-time universe module contained a silent fallback that
+substituted the *current* universe for dates before holdings coverage
+began — projecting survivors backwards (look-ahead + survivorship).
+This invalidated the pre-2021 portion of the IC series. The fallback
+was removed (the module now fails loudly); **all quoted figures come
+from the audited 2021+ window only.**
 
-**Key Finding:** The signal methodology is mathematically sound but economically unviable at $250K capital scale. Published for architectural reference.
-
----
-
-## Infrastructure
-
-**Modular Workflow:**
-
-Data Ingestion → Signal Generation → Portfolio Construction → Execution → Monitoring → Reconciliation
-
-**Operational Components:**
-
-1. **Data Layer**
-   - IBKR historical OHLCV (10 years, 238 tickers)
-   - Pre-market, regular, and after-hours data handling
-   - Volume filters: ADV > $5M
-
-2. **Signal Layer**
-   - Cross-sectional z-score normalization
-   - Mean-reversion hypothesis (quintile L/S construction)
-   - Daily rebalance with position persistence rules
-
-3. **Execution Layer**
-   - IBKR API integration with order acknowledgment tracking
-   - Deterministic position delta computation
-   - Lot-size quantization and min-notional enforcement
-
-4. **Monitoring & Reconciliation**
-   - Prometheus metrics: order latency, fill rate, cost accumulation
-   - Grafana dashboards: live positions, NAV curve, exposure
-   - Automated broker state validation (PM-015)
+**Key finding (clean window):**
+Unconditional edge is **not established**. A statistically significant
+conditional edge exists under rate-stress regimes (bootstrap p=0.001,
+robust to multiple-testing correction). The strategy is therefore
+classified as **regime-conditional**, not all-weather — conditional
+abstention is a condition of existence, not an enhancement.
 
 ---
 
-## Operational Controls
+## Operational Doctrine
 
-**Safeguards Enforced:**
-- Maximum gross notional limits
-- Sector concentration caps
-- Pre-trade exposure validation
-- Broker connectivity monitoring
-- Automated halt on constraint violation
+**Fail-closed, human-in-the-loop.** After a documented incident lineage
+(PM-015 → PM-020), every autonomous restart mechanism was deliberately
+removed — eight distinct resurrection vectors identified and
+eliminated (cron watchdogs, systemd restart policies, bot commands,
+alerter auto-restarts, scheduled cargo-cult restarts).
 
-**Critical Incident: PM-015 (June 2026)**
+Current start path — the only one:
 
-Race condition induced by duplicate systemd service instances: systemd restart spawned concurrent `live_loop` processes writing to same IBKR account, creating silent order state divergence.
+```text
+deliberate operator action
+  → kernel single-writer lock (exit on conflict)
+  → broker reconciliation gate: fresh broker read compared against
+    ALL local state sources; any divergence or unreachable broker
+    → refuse to trade (fail-closed)
+  → trading loop
+```
 
-**Resolution:** Single-writer lock-file guard + automated state reconciliation with exponential backoff retry. System now detects and corrects divergence in <60 seconds without manual intervention.
+Alerting components may alert; they never start or restart anything.
+The reconciliation gate has intercepted real divergences in production
+paper operation on three occasions — refusing to boot rather than
+trading on inconsistent state.
 
-See: `docs/PM-015-INCIDENT.md`
+Incident documentation: root cause, remediation, and regression
+coverage for each event (available under NDA; one public post-mortem
+in the companion repositories).
 
 ---
 
 ## Current Status
 
-**Out-of-Sample Backtest Results (April 2024 - May 2026):**
-- Historical walk-forward validation on held-out data completed
-- Signal methodology: Mathematically sound, economically constrained at $250K scale
+- Hardened paper deployment (IBKR) under a **10-market-day hands-off
+  validation gate**; live micro-capital deployment follows gate
+  completion.
+- Operational metrics will be reported with denominators:
+  *N sessions, X reconciliation cycles, Y controlled restarts,
+  unresolved divergences* — never headline claims without them.
 
-**Live Incubation (Infrastructure Validation):**
-- Paper-trading deployment: June 25, 2026 - Present
-- Uptime: 100%
-- Orders routed: 9 | Execution fills: 9 | Rejection rate: 0%
-- State reconciliation: 100% alignment (Local state ↔ IBKR ledger)
-- Broker API latency: <50ms avg
+---
+
+## Public Verification Companions
+
+Two public projects carry the same correctness contract into
+independently verifiable artifacts (shared invariants — **no code
+integration** with this pipeline):
+
+- **[verified-ledger](https://github.com/ddehanne/verified-ledger)** (Rust)
+  — order/execution ledger core: bounded model checking (Kani),
+  property-based testing, Miri, coverage-guided fuzzing.
+- **[execution-journal](https://github.com/ddehanne/execution-journal)** (C++20)
+  — execution-integrity engine: durable hash-chained journaling,
+  real-process fault injection, broker reconciliation, IBKR TWS
+  adapter exercised against a live paper gateway (read-only),
+  cross-validated position-by-position against an independent
+  ledger implementation.
 
 ---
 
 ## Design Philosophy
 
-1. **Determinism First:** Every execution path is testable and reproducible
-2. **Fail-Safe Architecture:** System detects and corrects its own failures
-3. **Auditability:** Every decision logged with timestamp and hash
-4. **Separation of Concerns:** Signal, execution, and risk management are independent modules
-
----
-
-## Documentation
-
-- `ARCHITECTURE.md` — System design, engine contracts, data flow
-- `docs/PM-015-INCIDENT.md` — Incident root-cause analysis and recovery
-- `research/methodology.md` — Research protocol, hypothesis testing, OOS validation
+1. **Determinism first** — every execution path testable and reproducible
+2. **Fail-closed** — on any inconsistency, the system refuses to act;
+   recovery is a deliberate human decision through a gated boot chain
+3. **Auditability** — append-only ledgering; decisions logged and
+   reconstructible by replay
+4. **Evidence over intention** — external facts (broker state, fills)
+   are recorded and reconciled, never assumed
 
 ---
 
 ## Proprietary Components
 
-Signal calibration, strategy parameters, live execution tuning, and detailed factor decomposition remain proprietary and available under professional confidentiality agreement.
+Signal construction, calibration, regime definitions, and live
+configuration remain proprietary — available for discussion under
+professional confidentiality agreement.
 
 ---
 
 ## Disclaimer
 
-This platform is operated through IBKR paper-trading account for infrastructure validation. Simulated execution is not presented as a substitute for real-money trading. All performance figures are subject to revalidation for exact reproducibility. Model, execution, broker, liquidity, data, and operational risks remain unmitigated.
+Operated on an IBKR paper account for infrastructure validation.
+Simulated execution is not a substitute for real-money trading. All
+figures are quoted from the audited data window and remain subject to
+revalidation. Model, execution, broker, liquidity, data, and
+operational risks remain.
