@@ -1,4 +1,4 @@
-# PM-015 Post-Mortem: Concurrent Broker Session Desynchronization
+# PM-015 — Concurrent Broker Session Desynchronization
 
 > ⚠ **Remediation doctrine superseded (2026-07).** The "zero manual
 > intervention" approach below was subsequently falsified in
