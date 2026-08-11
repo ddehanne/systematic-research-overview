@@ -2,7 +2,7 @@
 
 ## Overview
 
-QS1-XSMR is a quantitative research and paper-execution framework independently architected and operated over a **point-in-time U.S. equity universe** (dated holdings; universe membership is a function of time, not a fixed list).
+QS1-XSMR is a quantitative research and execution framework independently architected and operated over a point-in-time U.S. equity universe (dated holdings; universe membership is a function of time, not a fixed list). The system began operating with real capital through Interactive Brokers on August 11, 2026, following paper-environment validation.
 
 **Research discipline:** pre-registered hypotheses, held-out evaluation, and a self-initiated data audit that invalidated part of my own backtest — documented below.
 
@@ -23,7 +23,8 @@ Three layers with explicit contracts:
                      ▼
 ┌─────────────────────────────────────────────────────┐
 │    EXECUTION & ORCHESTRATION LAYER                  │
-│  Deterministic order routing (paper, IBKR)          │
+│  Deterministic order routing                        │
+│  (IBKR; paper → real capital)                       │
 │  • Kernel-level single-writer lock (flock)          │
 │  • Broker reconciliation gate at boot (fail-closed) │
 │  • Append-only fill ledger                          │
@@ -85,9 +86,7 @@ deliberate operator action
 ```
 
 Alerting components may alert; they never start or restart anything.
-The reconciliation gate has intercepted real divergences in production
-paper operation on three occasions — refusing to boot rather than
-trading on inconsistent state.
+During paper-environment qualification, the reconciliation gate intercepted broker/local-state divergences on three occasions, refusing to boot rather than proceeding on inconsistent state. The same fail-closed reconciliation contract is retained for real-capital operation.
 
 Incident documentation: root cause, remediation, and regression
 coverage for each event (available under NDA; one public post-mortem
@@ -97,18 +96,18 @@ in the companion repositories).
 
 ## Current Status
 
-- Hardened paper deployment (IBKR) under a **10-market-day hands-off
-  validation gate**; live micro-capital deployment follows gate
-  completion.
-- Operational metrics will be reported with denominators:
-  *N sessions, X reconciliation cycles, Y controlled restarts,
-  unresolved divergences* — never headline claims without them.
+* Real-capital operation began through IBKR on August 11, 2026, following completion of the paper-environment qualification phase.
+* The first real order completed the live execution path through broker fill, append-only ledger recording, and broker-state reconciliation.
+* Current validation focuses on realized execution costs, reconciliation, operational stability, failure handling, and recovery under real broker conditions.
+* Not all operational paths have yet been exercised with real capital; exit and stop-loss paths remain subject to live validation.
+* Operational metrics will continue to be reported with denominators: N sessions, X reconciliation cycles, Y controlled restarts, unresolved divergences — never headline claims without them.
+* No live-performance or persistent-alpha claim is made from the current operating history.
 
 ---
 
 ## Public Verification Companions
 
-Two public projects carry the same correctness contract into
+Two public projects reflect the same correctness principles into
 independently verifiable artifacts (shared invariants — **no code
 integration** with this pipeline):
 
@@ -146,8 +145,4 @@ professional confidentiality agreement.
 
 ## Disclaimer
 
-Operated on an IBKR paper account for infrastructure validation.
-Simulated execution is not a substitute for real-money trading. All
-figures are quoted from the audited data window and remain subject to
-revalidation. Model, execution, broker, liquidity, data, and
-operational risks remain.
+QS1-XSMR was qualified in an IBKR paper environment before transitioning to limited real-capital operation on August 11, 2026. The live operating history remains short and does not establish persistent alpha, investment performance, or complete operational validation. Not all execution and recovery paths have yet been exercised under real-capital conditions. All research figures are quoted from the audited data window and remain subject to revalidation. Model, execution, broker, liquidity, data, and operational risks remain.
