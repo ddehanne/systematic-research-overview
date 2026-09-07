@@ -118,21 +118,28 @@ reinterpreted as research results.
 
 ---
 
-## Research method
+## Research methodology
 
-### Evaluation protocol
+The final evaluation was designed to separate hypothesis development from
+subsequent validation and to reduce the risk of drawing conclusions from
+repeated adaptive testing.
 
-Hypotheses and acceptance criteria were written and committed before each test
-was run.
+The research process included:
 
-Four strategies were closed against pre-declared criteria:
+- chronological separation between development and evaluation;
+- point-in-time universe reconstruction using trailing information only;
+- explicit alignment of signals and forward returns;
+- transaction-cost and turnover considerations;
+- pre-declared evaluation criteria for later-stage tests;
+- comparison across different market conditions;
+- explicit rejection of hypotheses that failed robustness checks.
 
-| Strategy | Method | Verdict |
-|---|---|---|
-| QS1-XSMR | Cross-sectional mean reversion, attention/residual pipeline | IC +0.003 over ten years, t = +0.20 |
-| QS2-VBMR | Linear regression channel, StochRSI, volume, rebound quality | Entry signal shows no predictive power; the positive tail came from the exit rule, not the entry |
-| QS3-XLMR | Same signal, low-volatility large-cap universe | −10.90%; gross edge +0.47% against 11.00% friction over 27 months |
-| QS4-DTP | QS2 entry, net take-profit exit | Hit rate rises 48.1% → 58.5% while return falls; six −19% trades erase twenty-nine +5.9% ones |
+Earlier results affected by data, implementation, or reproducibility problems
+were withdrawn rather than retained as supporting evidence.
+
+Detailed signal definitions, feature construction, parameterization,
+portfolio rules, research search procedures, and related strategy-development
+logic are not part of the public documentation.
 
 ### Exploration budget
 
