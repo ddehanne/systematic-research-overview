@@ -164,39 +164,26 @@ rather than continued until something passed.
 ## System architecture
 
 ```text
-┌─────────────────────────────────────────────────────┐
-│         SIGNAL RESEARCH LAYER                       │
-│                                                     │
-│  Cross-sectional mean reversion                     │
-│  Status: CLOSED — IC +0.003, t = +0.20 over 10y    │
-└────────────────────┬────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────┐
-│    EXECUTION & ORCHESTRATION LAYER                  │
-│                                                     │
-│  Deterministic order routing (IBKR)                 │
-│                                                     │
-│  • Kernel-level single-writer lock (flock)          │
-│  • Broker reconciliation gate at boot (fail-closed) │
-│  • Account identity guard                           │
-│  • Operator kill switch                             │
-│  • Per-order notional cap                           │
-│  • Stopped-symbol blacklist: no same-session        │
-│    re-entry after a hard stop                       │
-│  • Append-only fill ledger                          │
-└────────────────────┬────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────┐
-│      OBSERVABILITY                                  │
-│                                                     │
-│  Strict "absence is never zero" semantics           │
-│                                                     │
-│  • Every value carries its age                      │
-│  • Health checks test function, not process presence│
-│  • Denominators withheld until samples support them │
-└─────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────┐
+│                RESEARCH LAYER                     │
+│                                                   │
+│  Signal generation → evaluation → portfolio state │
+│  Status: research hypothesis rejected             │
+└──────────────────────┬────────────────────────────┘
+                       ▼
+┌───────────────────────────────────────────────────┐
+│             EXECUTION LAYER                       │
+│                                                   │
+│  Broker connectivity → order management           │
+│  → state reconciliation → risk controls           │
+└──────────────────────┬────────────────────────────┘
+                       ▼
+┌───────────────────────────────────────────────────┐
+│        VERIFICATION & OBSERVABILITY               │
+│                                                   │
+│  Event logging → monitoring → divergence          │
+│  detection → operational verification             │
+└───────────────────────────────────────────────────┘
 ```
 
 The execution and observability layers are independent of the rejected signal
