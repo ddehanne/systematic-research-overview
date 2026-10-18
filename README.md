@@ -1,433 +1,131 @@
-# QS1-XSMR: Systematic Quantitative Research & Execution Infrastructure
+# Systematic Trading Infrastructure — Engineering Case Study
 
-## Overview
+**Independent research-to-execution project · March–August 2026 · Interactive Brokers · Python**
 
-QS1-XSMR is a quantitative research and execution system independently
-architected and operated around U.S. equities and Interactive Brokers. It
-progressed from historical research to paper-environment validation and a
-short real-capital deployment from August 11 to August 20, 2026.
+I built and operated a systematic U.S. equities pipeline spanning market data, research, portfolio construction, broker integration, order execution, reconciliation, and operational monitoring. After several months of paper trading, it reached **limited real-capital execution in August 2026**.
 
-**Final result: the signal does not work.**
+The project did **not** establish a profitable trading strategy or a production-ready execution system. Its value as an engineering case study is the documented progression from research to live operations—and the failures that became visible along the way.
 
-A corrected ten-year replay using a point-in-time reconstructed universe
-measured the Information Coefficient of score(T) against return(T→T+5) at
-**+0.0029, t = +0.20** (n = 129). No measurable predictive effect was found.
+## At a glance
 
-The strategy was closed on that evidence on August 20, 2026.
+| | Historical record |
+|---|---|
+| Development | March–August 2026; independently operated |
+| Broker | Interactive Brokers API / IB Gateway |
+| Paper trading | Prior to August 11, 2026 |
+| Real-capital fills | August 11–18, 2026 |
+| Initial live account value | Approximately **$1,281** (about **€1,116** at the recorded conversion) |
+| Recorded live activity | **12 fills**; five completed round trips and one position still open at the last documented halt |
+| Realized result on closed trades | **−$19.32 gross**; approximately **−$29 net**, with some commissions estimated |
+| Final account value / liquidation | **Not established from available records** |
+| Research conclusion | No measurable predictive signal at the tested horizon in the corrected historical replay |
 
-What remains is the research and engineering record: the methodology used to
-reach the verdict, execution infrastructure, broker reconciliation, operational
-controls, twelve post-mortems, and the audit process that ultimately overturned
-earlier conclusions.
+*Live figures above are reconstructed from the project's internal fill ledger and dated operational records, not independently verified against final broker statements. They are not a claim of audited performance.*
 
----
-
-## What was measured
-
-The final replay rebuilt the eligible universe point-in-time at each evaluation
-date using trailing information only. This corrected an earlier research dataset
-whose fixed 238-name universe was subsequently found to contain survivorship
-bias.
-
-Forward returns were aligned explicitly against a wide price matrix rather than
-through group operations, a class of misalignment that had previously inverted
-the sign of a live metric.
-
-Information Coefficient by period:
-
-| Period | IC | std | n | t | names scored |
-|---|---:|---:|---:|---:|---:|
-| **FULL 2016–2026** | **+0.0029** | 0.166 | 129 | **+0.20** | 188 |
-| 2020 COVID | −0.1335 | 0.217 | 19 | −2.68 | 167 |
-| 2022 bear | +0.0110 | 0.205 | 51 | +0.38 | 218 |
-| 2024 bull | −0.0109 | 0.141 | 51 | −0.55 | 232 |
-| 2025 crash | −0.0199 | 0.152 | 17 | −0.54 | 233 |
-
-The FULL line is the primary result: a ten-year window, not selected after
-observing the outcome.
-
-The COVID line is the only individually notable subperiod and does not survive
-scrutiny — nineteen observations, found among five periods examined, four of
-which were selected because they represented stressed market conditions. It is
-therefore treated as exploratory evidence rather than a validated
-regime-conditional effect.
-
-The replay harness that produced these figures iterates date by date through
-the production scoring path, applies commission and slippage as declared
-parameters, prints the number of names scored at each rebalance, and emits the
-hash of the commit that generated the output.
-
-At the observed sampling variability, the estimate is too small relative to
-its uncertainty to support a practically meaningful predictive effect.
-
----
-
-## Correction to earlier versions of this document
-
-Prior revisions stated a statistically significant regime-conditional edge
-under rate stress (bootstrap p = 0.001) and described the historical 238-name
-research universe as point-in-time.
-
-**Both statements are withdrawn.**
-
-### On the claimed edge
-
-Those figures came from a computation module referenced throughout the codebase
-as the source of the benchmark results. That module does not exist in the
-repository and no commit ever added it.
-
-Its outputs are therefore not reproducible, cannot be corrected, and cannot be
-re-run on a clean universe.
-
-A content hash proves file integrity; it does not prove computational
-reproducibility. That distinction was not made at the time, and an audit trail
-was claimed on that basis.
-
-### On the historical universe
-
-The earlier historical dataset holds 238 tickers over eleven years with
-**zero delistings**, and 56 names introduced after March 2020.
-
-For a universe described as high-volatility U.S. equities, zero attrition over
-eleven years is not credible evidence of a point-in-time universe. The list had
-been composed among surviving names.
-
-Backtested crisis-period figures derived from that dataset were therefore
-subject to survivorship bias of unquantified magnitude.
-
-By comparison, a separate 38-name universe used elsewhere in this work carried
-six measured delistings, and the engine displayed them.
-
-The final IC results reported above were produced only after replacing the
-survivorship-biased historical universe with a point-in-time reconstruction.
-
-### On the signal path
-
-A static audit of the executing code found three further discrepancies with its
-own documentation:
-
-- Sector neutralisation never runs: the guarding condition tests for a column
-  the feature builder does not produce, so the block is silently skipped on
-  every cycle.
-- Beta neutralisation is not imported by the runner.
-- One term of the final score multiplies a zero vector, so the documented
-  two-component weighting has only one effective component.
-
-These findings were treated as implementation defects, not retroactively
-reinterpreted as research results.
-
----
-
-## Research methodology
-
-The final evaluation was designed to separate hypothesis development from
-subsequent validation and to reduce the risk of drawing conclusions from
-repeated adaptive testing.
-
-The research process included:
-
-- chronological separation between development and evaluation;
-- point-in-time universe reconstruction using trailing information only;
-- explicit alignment of signals and forward returns;
-- transaction-cost and turnover considerations;
-- pre-declared evaluation criteria for later-stage tests;
-- comparison across different market conditions;
-- explicit rejection of hypotheses that failed robustness checks.
-
-Earlier results affected by data, implementation, or reproducibility problems
-were withdrawn rather than retained as supporting evidence.
-
-Detailed signal definitions, feature construction, parameterization,
-portfolio rules, research search procedures, and related strategy-development
-logic are not part of the public documentation.
-
-### Exploration budget
-
-Eighteen configurations were evaluated across three universes and three
-periods.
-
-No parameter set survived a change of either universe or period — the best
-variant of one period was the worst or mediocre in another.
-
-A take-profit family that appeared stable across two periods was then tested on
-a third period that had not previously influenced the search, with the criterion
-declared in advance. It failed.
-
-Beyond roughly a dozen cells, continued adaptive search was judged more likely
-to manufacture artifacts than produce independent evidence.
-
-The exploration budget was therefore declared spent and the search stopped
-rather than continued until something passed.
-
----
-
-## System architecture
+## The system
 
 ```text
-┌───────────────────────────────────────────────────┐
-│                RESEARCH LAYER                     │
-│                                                   │
-│  Signal generation → evaluation → portfolio state │
-│  Status: research hypothesis rejected             │
-└──────────────────────┬────────────────────────────┘
-                       ▼
-┌───────────────────────────────────────────────────┐
-│             EXECUTION LAYER                       │
-│                                                   │
-│  Broker connectivity → order management           │
-│  → state reconciliation → risk controls           │
-└──────────────────────┬────────────────────────────┘
-                       ▼
-┌───────────────────────────────────────────────────┐
-│        VERIFICATION & OBSERVABILITY               │
-│                                                   │
-│  Event logging → monitoring → divergence          │
-│  detection → operational verification             │
-└───────────────────────────────────────────────────┘
+  Offline:  Market data ──► Research & historical replay
+                                      │ (signal definition)
+                                      ▼
+  Live:     Market data ──► Portfolio targets ──► Pre-trade checks
+                                                        │
+                                                        ▼
+                                                   IB Gateway
+                                                        │
+                                                        ▼
+                                                 Orders and fills
+                                                        │
+                                                        ▼
+                                              Local execution ledger
+                                                        │
+                                                        ▼
+                                           Reconciliation & monitoring
+                                                        │
+                                                        ▼
+                                                Operator decisions
 ```
 
-The execution and observability layers are independent of the rejected signal
-and remain useful as engineering artifacts.
+The implementation included historical-data ingestion, backtesting, target-weight allocation, an execution loop, broker-account checks, order submission and fill tracking, an append-only ledger, reconciliation, alerts, and incident runbooks.
 
----
+These components did **not** all reach the same assurance level. Some safeguards were tested against failure conditions; others were implemented but never exercised, and some proved ineffective in live operation. The distinction between *implemented*, *tested*, and *reliable* is central to this case study.
 
-## Operational doctrine
+The implementation repository remains private. Signal definitions, feature engineering, portfolio parameters, account identifiers, and operational access details are intentionally excluded.
 
-### Fail-closed, human-in-the-loop
+## What operation revealed
 
-After a documented incident lineage, autonomous restart mechanisms were
-deliberately removed.
+### 1. Automatic recovery prevented a safe stop — paper trading
 
-Eight distinct resurrection vectors were identified and eliminated, including
-cron watchdogs, systemd restart policies, bot commands, alerter auto-restarts,
-and scheduled restarts.
+Multiple restart paths had accumulated over time. During a paper-trading incident, stopping the trading service did not keep it stopped: other mechanisms restarted it. In the same incident, a liquidation script ran twice and created unintended short positions in the simulated account.
 
-The only permitted start path became:
+**Response:** remove automatic restart paths, move the single-writer lock from the launcher to the shared resource, and require a fresh broker-state reconciliation before any start. Removing the restart paths took more than one pass: further paths were found after the first cleanup. Afterwards, the reconciliation gate refused to start the loop on several occasions in paper trading; in the two cases documented in detail, local state had gone stale after an outage.
 
-```text
-deliberate operator action
-        │
-        ▼
-kernel single-writer lock
-(exit on conflict)
-        │
-        ▼
-account identity guard
-(exit on wrong broker account)
-        │
-        ▼
-broker reconciliation gate
-        │
-        ├── broker unreachable ──────────► REFUSE TO TRADE
-        │
-        ├── local/broker divergence ─────► REFUSE TO TRADE
-        │
-        ▼
-trading loop
-```
+**Trade-off:** the system became dependent on deliberate operator intervention after outages. This was a safety choice, not an availability achievement.
 
-The reconciliation gate performs a fresh broker read and compares it against
-the relevant local state sources before execution is allowed to begin.
+### 2. A dead connection looked healthy — live trading
 
-Alerting components may alert; they never start or restart the trading system.
+The trading loop kept a broker connection that had silently died with an earlier gateway session. Reads still returned cached values, so the loop appeared healthy, but every order failed. When a protective stop triggered, it could not be sent. The loop logged the orders as "submitted" because it counted intentions rather than broker acknowledgements, and the reconciler reported a match because nothing had moved.
 
-During qualification, the reconciliation gate intercepted broker/local
-divergences on three occasions, refusing to boot rather than proceeding on
-inconsistent state.
+The position remained without the intended protection for approximately **14 minutes**, until the loop was restarted with a fresh connection.
 
----
+**Response:** a connection check was added before the broker reads used for reconciliation. **Limit:** in the last available code snapshot, the order path itself had no round-trip liveness check, and the order counter still counted intentions.
 
-## Post-mortem corpus
+### 3. The stop control reported success without stopping anything — live trading
 
-Twelve written post-mortems were produced.
+On the same day, the operator issued a halt through the chat interface. The interface confirmed the halt, but the trading loop never read that flag; the loop had to be terminated at the process level.
 
-Each entry follows the same structure:
+**Response:** the loop was changed to check the halt flag at the start of each cycle. **Limit:** the available records do not establish the negative test that would prove the revised halt blocks live order submission.
 
-```text
-trigger
-→ evidence
-→ hidden assumption
-→ failure mode
-→ missed signal
-→ remediation
-→ negative test
-→ proof level
-→ residual risk
-```
+### 4. A broker fill was invisible to the local ledger — live trading
 
-Proof levels distinguish between controls that are merely implemented,
-negatively tested, exercised end-to-end, and operationally observed.
+An order that most likely survived from an earlier session executed later. Because the ledger was written only on the current session's submission path, the fill was missed. Ledger and broker disagreed for more than **80 minutes**, during which the loop repeatedly tried to sell a position it no longer held; the cash-account restriction rejected those orders instead of opening an unintended short.
 
-Representative entries:
+**Response:** cancel outstanding broker orders at startup (implemented; no negative test in the available records). A more fundamental redesign—recording broker-confirmed events independently of the submission path and propagating reconciliation failures to alerts—remained unfinished when the project stopped.
 
-### PM-043 — Kill switch present but non-functional
+### The recurring failure mode
 
-The operator kill switch was never read by the trading loop.
+> **A failed read silently became a permission.**
 
-It reported success while doing nothing.
+Across multiple incidents, missing data or swallowed errors could weaken a constraint while leaving the process apparently healthy. The resulting engineering principle was to **fail closed** on uncertain broker state and to test whether a safeguard actually works—not merely whether its process, flag, or dashboard exists.
 
-The failure was demonstrated before the fix.
+## Research outcome: a negative result
 
-### PM-044 — Stop/rebalance race
+A corrected historical replay of the scoring logic as actually executed, over 2016–2026, produced a full-period information coefficient of **+0.0029** (*t* = **+0.20**) at a five-day horizon. This provided **no measurable evidence of predictive power** at that horizon.
 
-Hard stop and rebalance were uncoordinated.
+The review also uncovered defects in earlier research claims, including discrepancies between documented and executed scoring logic and a survivorship-biased universe. The replay only scores securities already listed at each date, but it draws from the same survivor-only security list, so it is, if anything, an optimistic bound. Earlier favorable claims were withdrawn. At the live account size, minimum commissions were material—roughly **0.4%–1.0% of order notional per side** in the recorded sample—further undermining economic viability.
 
-After a stop closed a position, the allocator observed zero holdings against a
-non-zero target and re-entered one second later.
+The appropriate conclusion is **not** that a strategy was proven universally incapable of working. It is that **this implementation and its corrected evaluation did not justify further deployment**.
 
-This was observed during real-capital operation as a sell followed immediately
-by a buy on the same symbol.
+## What this project demonstrates—and what it does not
 
-### PM-046 — Read failure becoming permission
+**Demonstrated:** independent integration of a research-to-broker workflow; actual order execution with personal capital; operational diagnosis across broker, ledger, and controls; documentation of failures; and a decision to halt a system whose evidence did not support continuation.
 
-One structural primitive appeared behind four separate defects on the capital
-path:
+**Not demonstrated:** sustainable alpha, positive net returns, dependable unattended operation, fully validated safety controls, or institutional production readiness. The live sample comprised only twelve fills over a short period.
 
-> **A read failure produces a permission, never a refusal.**
+AI coding assistants were used during development. I remained responsible for the project’s technical direction, operational decisions, and deployment.
 
-The sector-neutralisation defect described above represents the same primitive
-on the computation path and was identified four days later.
+## Corrections to earlier public material
 
-### PM-050 — Invisible broker fill
+Earlier versions of this repository overstated system maturity and included unsupported architectural or performance claims. In particular, descriptions of a production-grade system, a purported execution component that did not exist, and certain historical research results were inaccurate. Those claims are withdrawn.
 
-A broker fill executed and remained invisible to the trading loop for eighty
-minutes, generating an orphan order retried every cycle.
+An earlier version of the incident write-up on duplicate trading loops (PM-015) contained an illustrative timeline and described live trading. The incident occurred in a **paper account**; the version in this repository is limited to what the project records support. Some older material may remain accessible through Git history or external copies.
 
-A cash account prevented the condition from becoming an unintended short
-position.
+## Repository contents
 
-### Recurring failure pattern
+| Document | Content |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Historical architecture, with the assurance level reached by each component |
+| [docs/PM-015-INCIDENT.md](docs/PM-015-INCIDENT.md) | Duplicate trading-loop instances (paper, June 2026) |
+| [docs/PM-016-ZOMBIE-CGROUP.md](docs/PM-016-ZOMBIE-CGROUP.md) | Processes surviving a service stop (paper, July 2026) |
+| [docs/INFRA-001-SYSTEMD-LIFECYCLE.md](docs/INFRA-001-SYSTEMD-LIFECYCLE.md) | Service stop hardening (July 2026; later superseded) |
+| [docs/PM-018.md](docs/PM-018.md) | Automatic restart paths and duplicate liquidation (paper, July 2026) |
 
-A recurring theme across the incident corpus was:
+The live-trading incidents summarized above are described here only; their full post-mortems remain in the private repository.
 
-> **Controls verified presence, not function.**
+## Evidence and scope
 
-Process alive is not process healthy.
+This is a **historical engineering case study**, not an open-source release of the trading system. Its narrative is based on dated project commits, incident reports, runbooks, and internal fill records. The original private implementation and account records are not published here.
 
-Config file present is not config file consumed.
+The trading loop was halted by **August 20, 2026**. A position was still open in the last available operational snapshot; the final liquidation date and account balance remain unverified. No claim is made that the account was fully liquidated on August 20.
 
-Control present is not control enforced.
-
----
-
-## Live operating record
-
-QS1-XSMR ran with real capital from August 11 to August 20, 2026 on a small
-account deliberately sized for validating the execution path rather than
-producing investment returns.
-
-Every closed trade was net negative.
-
-Total realised loss was of the order of tens of dollars.
-
-Execution costs measured on real fills were approximately **37–42 basis points
-per side** at that account size, against a gross predictive edge subsequently
-measured at effectively zero.
-
-The live deployment also exposed operational failures that had not been
-identified during paper-environment qualification and became inputs to the
-post-mortem and hardening process.
-
-The account was liquidated and the QS1 strategy infrastructure decommissioned
-on August 20, 2026 after the research verdict was established.
-
----
-
-## Public verification companions
-
-Two public projects carry selected correctness principles into independently
-verifiable artifacts. They share engineering invariants with QS1-XSMR but do
-not integrate its proprietary research implementation.
-
-### [verified-ledger](https://github.com/ddehanne/verified-ledger)
-
-Rust order/execution ledger core with:
-
-- bounded model checking using Kani
-- property-based testing
-- Miri
-- coverage-guided fuzzing
-
-### [execution-journal](https://github.com/ddehanne/execution-journal)
-
-C++20 execution-integrity engine with:
-
-- durable hash-chained journaling
-- real-process fault injection
-- broker reconciliation
-- IBKR TWS adapter exercised against a live paper gateway in read-only mode
-- position-by-position cross-validation against an independent ledger
-  implementation
-
----
-
-## Design philosophy
-
-### 1. Determinism first
-
-Execution paths should be reproducible enough to test, replay, and reason about.
-
-### 2. Fail closed
-
-On state inconsistency or unavailable required evidence, the system refuses to
-act.
-
-Recovery is a deliberate human decision through a gated boot chain.
-
-### 3. Auditability
-
-Execution events are recorded through append-only ledgering so decisions can be
-reconstructed by replay.
-
-A hash proves integrity, not reproducibility.
-
-### 4. Evidence over intention
-
-A control is not considered effective because it exists in code or
-configuration.
-
-Its behavior must be tested or observed.
-
-The same rule applies to research claims.
-
-### 5. Negative results are results
-
-A hypothesis that fails its declared evaluation criteria is rejected rather
-than reframed.
-
-The objective is not to make the strategy survive the experiment.
-
-The objective is to make the conclusion survive scrutiny.
-
----
-
-## Scope of public disclosure
-
-This repository documents the research process, system architecture,
-operational failures, validation methodology, and final empirical conclusions.
-
-Exact signal definitions, feature transformations, calibration details,
-portfolio-construction parameters, sizing logic, and selected implementation
-details are intentionally not published.
-
-The purpose of the public artifact is to make the reasoning and engineering
-auditable without publishing a complete strategy specification.
-
----
-
-## Source code
-
-The primary implementation repository is private.
-
-The replay harness, post-mortem corpus, pre-registrations, and closure documents
-can be made available for technical discussion where appropriate.
-
----
-
-## Status
-
-**CLOSED — August 20, 2026**
-
-The signal was measured and does not work.
-
-The measurement is the result, and it is published as such.
+**Status: closed as a research/execution experiment; no validated trading edge.**

@@ -1,241 +1,144 @@
-# Architecture Design Document
+# Historical Architecture
 
-## System Overview
+This document describes the system **as it stood when the project stopped (August 20, 2026)**. It is a historical record, not a design for a running system. The implementation repository is private; signal definitions, portfolio parameters, universe composition, account identifiers and host details are intentionally omitted.
 
-QS1-XSMR is a Python research-to-execution pipeline organized as three
-loosely coupled layers:
+Each component is labelled with the highest assurance level the project records support:
 
-- Signal research operates independently from execution
-- Execution is gated by integrity controls at boot and per cycle
-- Failures are contained by a fail-closed doctrine: on any state
-  inconsistency the system refuses to trade
+| Level | Meaning |
+|---|---|
+| **Implemented** | Code present; no documented test of the failure it guards against |
+| **Tested** | A documented negative or unit test exercised the failure condition |
+| **Operated** | Used in paper and/or live operation |
+| **Failed in operation** | Observed not to provide its intended protection |
 
-Two public companion projects (Rust, C++20) carry the same correctness
-contract into independently verifiable artifacts — shared invariants,
-**no code integration** with this pipeline. See "Verification
-Companions" below.
+"Operated" does not imply "tested", and neither implies "reliable".
 
 ---
 
-## Data Flow Pipeline
+## Data flow
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│                    EXTERNAL DATA SOURCES                    │
-│   IBKR historical OHLCV │ dated holdings (universe) │ FRED  │
-└──────────────────────────────┬──────────────────────────────┘
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│              DATA INGESTION & UNIVERSE (Python)             │
-│  • Point-in-time universe construction from dated holdings  │
-│    (membership is a function of time — no silent fallback:  │
-│    missing coverage raises a loud error; see Data Audit     │
-│    section)                                                 │
-│  • Feature computation on the admissible universe           │
-└──────────────────────────────┬──────────────────────────────┘
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│         LAYER 1: SIGNAL RESEARCH (Python)                   │
-│  Cross-sectional scoring → candidate ranking                │
-│  Pre-registered evaluation; audited window 2021+ only       │
-│  Classification: regime-conditional (see README)            │
-└──────────────────────────────┬──────────────────────────────┘
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│    LAYER 2: EXECUTION & ORCHESTRATION (Python)              │
-│                                                             │
-│  BOOT CHAIN (the only start path — deliberate operator      │
-│  action):                                                   │
-│    1. Kernel single-writer lock (flock on the ledger        │
-│       resource) — second instance exits immediately         │
-│    2. Broker reconciliation gate — fresh broker read        │
-│       compared against ALL local state sources; any         │
-│       divergence or unreachable broker → exit non-zero,     │
-│       no trading (fail-closed)                              │
-│    3. Trading loop starts                                   │
-│                                                             │
-│  PER CYCLE:                                                 │
-│    • Load signal → allocation → target portfolio            │
-│    • Diff: orders = target − current (idempotent: same      │
-│      target twice ⇒ zero orders)                            │
-│    • Order construction: lot quantization, min-notional     │
-│    • Submission & fill tracking via ib_insync               │
-│    • Append fills to ledger.jsonl (append-only)             │
-└──────────────────────────────┬──────────────────────────────┘
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│    LAYER 3: RISK & CONSTRAINT ENFORCEMENT                   │
-│  Pre-trade constraints (notional, concentration,            │
-│  tradability filters incl. earnings blacklist — hot-read    │
-│  from disk each cycle)                                      │
-│  [Detailed parameters proprietary]                          │
-└──────────────────────────────┬──────────────────────────────┘
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│      MONITORING & OBSERVABILITY (read-only)                 │
-│  • Prometheus metrics, Grafana dashboards                   │
-│  • Telegram alerting — alerts NEVER start or restart        │
-│    anything (doctrine: see PM-018/PM-019)                   │
-│  • Daily operator health check (read-only script)           │
-└─────────────────────────────────────────────────────────────┘
+OFFLINE
+  Historical market data ──► Research & historical replay ──► signal definition
+
+LIVE (one cycle, launched manually)
+  Halt check ──► Market data ──► Targets ──► Order diff ──► Pre-trade checks
+                                                                 │
+                                                                 ▼
+                                    IB Gateway ◄────────── Order submission
+                                         │
+                                         ▼
+                                 Fills ──► Append-only local ledger
+                                                   │
+                                                   ▼
+                                    Per-cycle reconciliation, alerts
+                                                   │
+                                                   ▼
+                                           Operator decisions
 ```
 
 ---
 
-## State Model
+## Boot chain
 
-### Sources of local state
+Starting the trading loop was a deliberate operator action. In the final design, three checks ran in sequence, and any failure stopped the start before an order could be sent.
 
-The pipeline maintains multiple local state artifacts; the **fill
-ledger is the reconstruction authority**, and all sources are checked
-against the broker at boot:
-
-| Artifact | Role | Written by |
+| Step | What it does | Assurance |
 |---|---|---|
-| `ledger.jsonl` | Append-only fill history — authoritative for position reconstruction | executor |
-| executor position cache | Fast-path current positions | executor |
-| entry price cache | Cost-basis tracking | executor |
-| broker-view snapshot | Last known broker positions | cycle refresh |
+| 1. Single-writer lock | Kernel `flock` on a dedicated lock file guarding shared state; a second instance exits immediately | Implemented; operated (paper, live). Introduced after PM-018 |
+| 2. Account identity guard | Refuses to start if the connected broker account is not the expected one | **Tested** (refused a paper account), live from August 2026 |
+| 3. Reconciliation gate | Fresh read-only broker read compared with every local state file; exits on unreadable files, unreachable broker, divergence or stale snapshots | **Operated** in paper: refused starts several times; the two cases documented in detail were stale local snapshots after outages |
 
-**Invariant (learned from incident history):** any state file not
-checked against the broker at boot will eventually diverge silently.
-The reconciliation gate therefore compares **all** sources, not just
-the ledger.
-
-### Target-to-orders reconciliation (per cycle)
-
-```text
-current positions (rebuilt from ledger)
-        +
-target portfolio (from allocation)
-        ↓
-orders = target − current
-        ↓
-zero diff ⇒ zero orders (idempotence)
-```
-
-Two reconciliations exist at two levels and must not be confused:
-- **Boot reconciliation** (integrity): local state vs broker; any
-  unresolved divergence forbids trading.
-- **Cycle reconciliation** (production): target vs current; produces
-  the order list.
+**Trade-off:** no automatic restart path exists. After any outage, trading resumed only when the operator restarted it. In one documented case, a weekend gateway outage followed by a blocked restart kept the paper system down for more than a day.
 
 ---
 
-## Operational Doctrine — Fail-Closed
+## Per-cycle execution
 
-The system's restart doctrine evolved through documented incidents
-(PM-015 → PM-020) and is deliberately **human-in-the-loop**:
-
-- Detection is automatic; **correction is not.** On inconsistency the
-  system refuses to act (gate exits non-zero, zero orders).
-- Recovery is a deliberate operator action through the locked boot
-  chain.
-- Alerting components alert; they never start anything. Eight distinct
-  autonomous restart mechanisms were identified and removed (cron
-  watchdogs, systemd restart policies, supervisor units, control-API
-  endpoints, bot commands, alerter auto-restart, scheduled restarts);
-  the full process tree is audited for start paths.
-- systemd hardening: `KillMode=control-group`, bounded stop timeout,
-  start-rate limiting, no automatic restart (see INFRA-001, PM-016).
-
-The earlier "self-healing / zero manual intervention" direction
-documented in PM-015 was falsified in production and superseded — the
-evolution is documented, not erased (see PM-015 addendum).
-
----
-
-## Data Audit (methodological control)
-
-A self-initiated audit found that the point-in-time universe module
-silently substituted the current universe for dates before holdings
-coverage began — projecting survivors backwards (look-ahead +
-survivorship). The pre-2021 window of the IC series was invalidated;
-the fallback was replaced with a loud error; **all published figures
-come from the audited 2021+ window.** This audit is the reason the
-strategy is classified regime-conditional rather than unconditional.
-
----
-
-## Failure Modes & Recovery
-
-| Failure | Detection | Response |
+| Component | Assurance | Notes |
 |---|---|---|
-| Second instance starts | kernel flock | new instance exits immediately (exit 3) |
-| Local/broker divergence at boot | reconciliation gate | refuse to trade (exit 4); operator investigates; state refreshed from broker read-only session only after root-cause |
-| Broker unreachable at boot | reconciliation gate | fail-closed — no trading on unverifiable state |
-| Broker API timeout in session | bounded retry, backoff | bounded attempts; failure logged; no unbounded resubmission |
-| Gateway restart (weekly, external) | daily operator check incl. listener probe | operator-driven recovery; known limitation: in-session reconnection is a planned hardening item |
-| Process kill mid-write | append-only ledger + reconstruction | positions rebuilt from ledger at next boot; verified against broker by the gate |
-
-Real interceptions: the boot gate has refused to start on divergent
-state on three occasions in paper operation — each documented with
-root cause and remediation.
-
----
-
-## Testing Strategy
-
-- **Fault-injection harness** (public: `fault-injection-harness`) —
-  five deterministic fault classes: process termination, broker
-  disconnect, concurrent writers, phantom positions, clock skew. One
-  class (concurrent writers) was later reproduced in the paper
-  environment through three distinct vectors — root-caused and
-  mitigated with resource-level locking.
-- **Idempotence:** same target twice ⇒ zero orders (tested).
-- **Boot-gate behavior:** divergence fixtures ⇒ non-zero exit, no
-  orders (tested).
-- Test evidence for the formally verified invariants lives in the
-  companion repositories (see below).
+| Operator halt check (top of cycle) | Implemented | Added after the live incident in which the halt flag was never read by the loop. Freezes the cycle; no negative test proving it blocks order submission is recorded |
+| Target → order diff with drift threshold | Operated | Unchanged targets produce no orders; a unit test for this exists |
+| Whole-share orders, regular-hours only | Implemented; operated | Fractional shares were unavailable to the account |
+| Per-order notional cap (entries) | Implemented | Never triggered |
+| Hard stop | Operated; **failed in operation** | Once could not be sent over a dead connection (~14 min unprotected); once was partly undone when the rebalance step re-entered the same name in the same cycle |
+| Stopped-symbol block (after the above) | Implemented | No recorded test |
+| Order counter | **Failed in operation** | Counted order intentions, not broker acknowledgements; unchanged at shutdown |
+| Ledger write | Operated; **failed in operation** | Written only on the current session's submission path; a fill from an order that most likely survived an earlier session was missed |
+| Cancel outstanding orders at boot | Implemented | Added after that incident; no recorded negative test |
+| Read-failure handling ("failed read ≠ empty result") | Tested at some sites | Applied at four sites: two passed negative tests on the real path, one unit-verified, coverage of the remainder partial |
+| Per-cycle reconciliation | Operated; **failed in operation** | Reported "OK" on a cycle where orders could not be sent; a divergence status was not propagated to alerts |
+| Per-cycle automatic position correction | Implemented; suspended by the halt flag | Descends from the June remediation (PM-015). It can place orders to correct a ledger/broker difference, which contradicts the fail-closed boot doctrine. It was still present at shutdown |
 
 ---
 
-## Verification Companions (public, no code integration)
+## Monitoring
 
-| Project | Language | What it proves |
+| Component | Assurance | Notes |
 |---|---|---|
-| [verified-ledger](https://github.com/ddehanne/verified-ledger) | Rust | Ledger correctness model: hash-chained journal, torn-tail recovery, replay determinism — property tests, Miri, 17M+-run fuzzing campaign, Kani bounded model checking |
-| [execution-journal](https://github.com/ddehanne/execution-journal) | C++20 | Execution-integrity engine: durable journal with fsync dispatch-eligibility barrier, boot reconciliation vs a scriptable lying broker, real-process fault injection (SIGKILL), IBKR TWS adapter exercised against a live paper gateway, cross-validated position-by-position against this pipeline's ledger |
-
-The Python pipeline applies the same invariants operationally
-(append-only ledgering, single-writer, reconciliation, fail-closed);
-the companions prove them formally in isolation. Claims about
-hash-chained integrity and bounded proofs belong to the companions,
-not to `ledger.jsonl`.
+| Chat bot (alerts and commands) | Operated | The halt command wrote a flag the loop did not read; part of the bot's control logic still referred to a service that no longer existed; emergency commands were never tested. The documented emergency stop was terminating the process |
+| Scheduled health probe (every 10 min) | Operated; **failed in operation** | Checked process presence, not function, and reported "up" while the loop held a dead connection. A heartbeat-based check was specified, but it was not in the last code snapshot |
+| Daily operator check | Operated | Manual, read-only |
+| Metrics exporter and dashboards | Operated in paper (April–July) | The exporter was stopped on July 9 and its absence went unnoticed for 34 days; the end-of-day report read the missing metrics as zero |
+| Live performance reporting | **Failed in operation** | Initially computed live returns against the paper capital base; fixed for the main reports, not for every consumer |
 
 ---
 
-## Technology Stack
+## Restart doctrine
 
-| Component | Language | Key libs | Purpose |
-|---|---|---|---|
-| Research & signal | Python | NumPy/Pandas/Parquet | Universe construction, features, evaluation |
-| Execution & orchestration | Python | ib_insync | Order construction, submission, fills, state |
-| Integrity gates | Python | flock (kernel) | Single-writer, boot reconciliation |
-| Monitoring | Prometheus/Grafana | — | Metrics, dashboards, alert-only Telegram |
-| Verification companions | Rust / C++20 | Kani, proptest, libFuzzer / GoogleTest, sanitizers | Formal and adversarial verification of the shared contract |
+Between June and July, eight independent mechanisms were found that could start or restart the trading process:
 
----
+- a cron watchdog;
+- service restart policies;
+- a supervisor unit;
+- a control API;
+- a second service unit;
+- bot commands;
+- an alerter that restarted the loop on a stale cycle;
+- a scheduled daily restart.
 
-## Future Evolution
+Two of them were found only after the first cleanup ([PM-018](docs/PM-018.md), then PM-019).
 
-1. **In-session broker reconnection** — survive external Gateway
-   restarts without operator action (known limitation, planned).
-2. **Exchange calendar integration** — holidays and early closes in
-   scheduler and alert thresholds ("stale at market close is not a
-   fault" — PM-019 lesson).
-3. **Configuration consolidation** — single authoritative config
-   source (a dual-config ambiguity is a known open item).
-4. **Cost-model refinement** — per-trade fixed costs and tail-of-
-   liquidity (p10 ADV) participation in the capacity model.
-5. **Staged live-capital transition** — gated on a hands-off
-   validation period with denominator-reported metrics.
+All eight were removed or disabled. The resulting doctrine:
+
+- detection may be automatic, starting is not;
+- an alerting component alerts and never restarts anything;
+- on uncertain state, the boot chain refuses to start.
+
+The per-cycle automatic correction listed above is the known exception that was not resolved.
 
 ---
 
-## References
+## Testing
 
-- `README.md` — methodology, findings, current status
-- `docs/PM-015-INCIDENT.md` (+ doctrine addendum), `docs/PM-016-ZOMBIE-CGROUP.md`, `docs/PM-018.md` — incident lineage
-- `docs/INFRA-001-SYSTEMD-LIFECYCLE.md` — process lifecycle controls
-- Companion repositories: verified-ledger, execution-journal, fault-injection-harness
+- **Unit and component tests:** the private repository contains about 180 test files. Their pass/fail state at shutdown was not re-established for this document. Several depend on host-specific paths.
+- **Fault-injection harness:** [fault-injection-harness](https://github.com/ddehanne/fault-injection-harness), a public, standalone, paper-environment harness with five deterministic fault classes: process kill during ledger write, broker disconnect, concurrent instances, phantom position and clock skew. The concurrent-instance class was later reproduced in paper operation (PM-018).
+- **Negative tests on the real path:** documented for the account identity guard, account scoping on a multi-account gateway, and two read-failure sites.
+- **Not tested:** the revised halt, order cancellation at boot, the notional cap, and the end-to-end live close path.
+
+---
+
+## Related public projects
+
+[verified-ledger](https://github.com/ddehanne/verified-ledger) (Rust) and [execution-journal](https://github.com/ddehanne/execution-journal) (C++20) are separate projects that model ledger and execution-journal invariants in isolation. They share no code with this pipeline. Their claims and evidence are documented in their own repositories and are not part of this case study.
+
+---
+
+## State at shutdown (August 20, 2026)
+
+The loop was halted by the operator. Open technical items included:
+
+- no round-trip broker liveness check on the order path;
+- ledger writes tied to the submission path;
+- reconciliation status not alerting;
+- the halt never negative-tested;
+- the per-cycle automatic correction still present.
+
+None of these were resolved; the project stopped because the research result did not justify further work (see [README](README.md)).
+
+## Incident documents in this repository
+
+- [docs/PM-015-INCIDENT.md](docs/PM-015-INCIDENT.md): duplicate loop instances (paper, June)
+- [docs/PM-016-ZOMBIE-CGROUP.md](docs/PM-016-ZOMBIE-CGROUP.md): processes surviving a service stop (paper, July)
+- [docs/INFRA-001-SYSTEMD-LIFECYCLE.md](docs/INFRA-001-SYSTEMD-LIFECYCLE.md): service stop hardening (July; later superseded)
+- [docs/PM-018.md](docs/PM-018.md): automatic restart paths and duplicate liquidation (paper, July)

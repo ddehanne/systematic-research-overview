@@ -1,47 +1,31 @@
-# INFRA-001 — systemd Process Lifecycle Hardening
+# INFRA-001 — Service Stop Hardening
 
 ## Status
 
-DONE — validated on the real IBKR paper-deployment service.
+Completed 2026-07-02 on the paper deployment. **Superseded in July 2026:** after [PM-018](PM-018.md), automatic restart was disabled entirely, the service units were masked, and the trading loop was later launched manually as a standalone process. The settings below describe the July 2 state only.
 
 ## Objective
 
-Ensure that stopping the execution service terminates the complete service cgroup and limits uncontrolled restart loops through systemd start-rate controls.
+Ensure that stopping the execution service terminates every process it started, and limit uncontrolled restart loops.
 
-## Implemented Controls
+## Controls applied (July 2 state)
 
 - `KillMode=control-group`
-- `KillSignal=SIGTERM`
-- `TimeoutStopSec=10`
-- `Restart=on-failure`
-- `RestartSec=5`
-- `StartLimitIntervalSec=300`
-- `StartLimitBurst=3`
+- `KillSignal=SIGTERM`, `TimeoutStopSec=10`
+- `Restart=on-failure`, `RestartSec=5`. This setting was later identified as one of the automatic restart paths and removed (PM-018).
+- `StartLimitIntervalSec=300`, `StartLimitBurst=3`
 
-## Validation Evidence
+## Recorded validation
 
-- isolated cgroup test: passed;
-- real service stop: passed;
-- service cgroup destroyed after stop;
-- no residual executor process observed;
-- executor-side broker-related sockets were no longer observed after service stop;
-- service state confirmed as `inactive/dead`;
-- automatic boot start disabled.
+- Isolated control-group test: passed (three processes reaped).
+- Real service stop: passed. The control group was destroyed, sockets were released, and no orphan process remained.
+- Service state afterwards: inactive, not enabled at boot.
 
-## Scope
+## Scope and limits
 
-This control validates service process-lifecycle behavior only.
+This control covered local process lifecycle only. It did not establish broker-side session cleanup (the gateway still held a session afterwards), broker-state reconciliation, order idempotence, single-writer enforcement, or production readiness.
 
-It does not establish:
+## Follow-ups
 
-- broker-state reconciliation;
-- order idempotence;
-- single-writer enforcement;
-- complete session cleanup inside IBKR;
-- production readiness.
-
-## Next Dependencies
-
-- INFRA-002 — local single-writer control;
-- INFRA-003 — broker reconciliation gate.
-
+- INFRA-002: single-writer lock on the shared resource (July 10).
+- INFRA-003: broker reconciliation gate at boot (July 14).
