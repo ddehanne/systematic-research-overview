@@ -36,27 +36,18 @@ One position still open at the last documented halt
 
 ## The system
 
-```text
-  Offline:  Market data ──► Research & historical replay
-                                      │ (signal definition)
-                                      ▼
-  Live:     Market data ──► Portfolio targets ──► Pre-trade checks
-                                                        │
-                                                        ▼
-                                                   IB Gateway
-                                                        │
-                                                        ▼
-                                                 Orders and fills
-                                                        │
-                                                        ▼
-                                              Local execution ledger
-                                                        │
-                                                        ▼
-                                           Reconciliation & monitoring
-                                                        │
-                                                        ▼
-                                                Operator decisions
-```
+**Offline — research**
+
+Market data → Historical replay → Signal definition
+
+**Live — execution**
+
+1. Market data
+2. Portfolio targets and pre-trade checks
+3. IB Gateway — orders and fills
+4. Local execution ledger
+5. Reconciliation and monitoring
+6. Operator decisions
 
 The implementation included historical-data ingestion, backtesting, target-weight allocation, an execution loop, broker-account checks, order submission and fill tracking, an append-only ledger, reconciliation, alerts, and incident runbooks.
 
