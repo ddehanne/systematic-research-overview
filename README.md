@@ -8,17 +8,29 @@ The project did **not** establish a profitable trading strategy or a production-
 
 ## At a glance
 
-| | Historical record |
-|---|---|
-| Development | March–August 2026; independently operated |
-| Broker | Interactive Brokers API / IB Gateway |
-| Paper trading | Prior to August 11, 2026 |
-| Real-capital fills | August 11–18, 2026 |
-| Initial live account value | Approximately **$1,281** (about **€1,116** at the recorded conversion) |
-| Recorded live activity | **12 fills**; five completed round trips and one position still open at the last documented halt |
-| Realized result on closed trades | **−$19.32 gross**; approximately **−$29 net**, with some commissions estimated |
-| Final account value / liquidation | **Not established from available records** |
-| Research conclusion | No measurable predictive signal at the tested horizon in the corrected historical replay |
+### Project
+**March–August 2026** · Independently operated
+
+Interactive Brokers API / IB Gateway
+
+Paper trading before August 11, 2026
+
+### Live execution
+**August 11–18, 2026** · Real-capital fills
+
+**12 recorded fills** · Five completed round trips
+
+One position still open at the last documented halt
+
+### Financial record
+**Initial account value:** approximately **$1,281** (about **€1,116** at the recorded conversion)
+
+**Realized closed-trade result:** **−$19.32 gross**; approximately **−$29 net**, with some commissions estimated
+
+**Final account value / liquidation:** Not established from available records
+
+### Research outcome
+**No measurable predictive signal** at the tested horizon in the corrected historical replay.
 
 *Live figures above are reconstructed from the project's internal fill ledger and dated operational records, not independently verified against final broker statements. They are not a claim of audited performance.*
 
@@ -112,13 +124,11 @@ An earlier version of the incident write-up on duplicate trading loops (PM-015) 
 
 ## Repository contents
 
-| Document | Content |
-|---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Historical architecture, with the assurance level reached by each component |
-| [docs/PM-015-INCIDENT.md](docs/PM-015-INCIDENT.md) | Duplicate trading-loop instances (paper, June 2026) |
-| [docs/PM-016-ZOMBIE-CGROUP.md](docs/PM-016-ZOMBIE-CGROUP.md) | Processes surviving a service stop (paper, July 2026) |
-| [docs/INFRA-001-SYSTEMD-LIFECYCLE.md](docs/INFRA-001-SYSTEMD-LIFECYCLE.md) | Service stop hardening (July 2026; later superseded) |
-| [docs/PM-018.md](docs/PM-018.md) | Automatic restart paths and duplicate liquidation (paper, July 2026) |
+- **[Architecture](ARCHITECTURE.md)** — Historical architecture and assurance levels reached by each component.
+- **[PM-015](docs/PM-015-INCIDENT.md)** — Duplicate trading-loop instances (paper, June 2026).
+- **[PM-016](docs/PM-016-ZOMBIE-CGROUP.md)** — Processes surviving a service stop (paper, July 2026).
+- **[INFRA-001](docs/INFRA-001-SYSTEMD-LIFECYCLE.md)** — Service stop hardening (July 2026; later superseded).
+- **[PM-018](docs/PM-018.md)** — Automatic restart paths and duplicate liquidation (paper, July 2026).
 
 The live-trading incidents summarized above are described here only; their full post-mortems remain in the private repository.
 
