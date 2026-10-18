@@ -1,10 +1,40 @@
-# Systematic Trading Infrastructure — Engineering Case Study
+# Systematic Trading Infrastructure
 
-**Independent research-to-execution project · March–August 2026 · Interactive Brokers · Python**
+**Quantitative Research · Broker Execution · Reliability Engineering**
 
-I built and operated a systematic U.S. equities pipeline spanning market data, research, portfolio construction, broker integration, order execution, reconciliation, and operational monitoring. After several months of paper trading, it reached **limited real-capital execution in August 2026**.
+*Independent engineering project · March–August 2026 · Python · Interactive Brokers*
 
-The project did **not** establish a profitable trading strategy or a production-ready execution system. Its value as an engineering case study is the documented progression from research to live operations—and the failures that became visible along the way.
+I designed, built, and operated a systematic U.S. equities research-to-execution pipeline spanning historical research, portfolio construction, broker integration, order execution, reconciliation, and operational monitoring.
+
+The system progressed from paper trading to **limited real-capital execution in August 2026**. Its most important engineering lessons emerged when broker state, local records, process lifecycle, and protective controls failed to behave as intended.
+
+## Engineering highlights
+
+### 01 — Research-to-execution architecture
+
+Integrated historical market data, research evaluation, portfolio targets, pre-trade checks, broker order routing, fill tracking, persistent records, reconciliation, and operational monitoring.
+
+### 02 — Concurrency and process control
+
+Diagnosed duplicate trading loops and **eight independent restart mechanisms**. Moved single-writer protection from a launcher-level guard to a kernel `flock` on the shared resource, and eliminated automatic restart paths.
+
+### 03 — Fail-closed startup
+
+Implemented a broker-state reconciliation gate designed to refuse startup on inconsistent, stale, or unverifiable state. Startup refusals were observed in paper operation, including documented stale-snapshot cases.
+
+### 04 — Execution failure analysis
+
+Investigated dead broker connections, ineffective halt controls, missed fills, and misleading reconciliation results during limited real-capital operation. Not all defects were resolved before shutdown.
+
+### 05 — Research integrity
+
+Audited earlier research claims, identified survivorship bias and discrepancies between documented and executed scoring logic, and stopped deployment after corrected evaluation failed to establish measurable predictive power at the tested horizon.
+
+### 06 — Evidence-based engineering
+
+Separated **implemented**, **tested**, **operated**, and **failed in operation** safeguards. Preserved incident evidence and unresolved limitations rather than presenting the system as production-ready.
+
+**Outcome:** a documented engineering case study—not a validated profitable strategy or a production-ready trading system.
 
 ## At a glance
 
